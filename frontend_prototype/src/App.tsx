@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { SigmaContainer, useLoadGraph, useSigma } from "@react-sigma/core";
 import Graph from "graphology";
+import forceAtlas2 from "graphology-layout-forceatlas2";
 
 const PROFESSION_NAMES: Record<number, string> = {
   164: "Blacksmithing",
@@ -51,38 +52,38 @@ const TYPE_COLOR: Record<string, string> = {
   product: "#2b5a3f",
 };
 
-function computePositions(nodes: RenderNode[]) {
-  const columns: Record<number, RenderNode[]> = {};
-  nodes.forEach((node) => {
-    const column = TYPE_COLUMN[node.type] ?? 1;
-    columns[column] = columns[column] ?? [];
-    columns[column].push(node);
-  });
 
-  const positions = new Map<string, { x: number; y: number }>();
-  const columnKeys = Object.keys(columns)
-    .map(Number)
-    .sort((a, b) => a - b);
+function hashToUnit(value: string) {
+  let hash = 0;
+  for (let i = 0; i < value.length; i += 1) {
+    hash = (hash * 31 + value.charCodeAt(i)) % 1_000_000_007;
+  }
+  return (hash % 10_000) / 10_000;
+}
 
-  columnKeys.forEach((column, columnIndex) => {
-    const list = columns[column];
-    list.sort((a, b) => a.label.localeCompare(b.label));
-    const x = columnIndex * 600;
-    list.forEach((node, index) => {
-      positions.set(node.id, { x, y: index * 80 });
-    });
-  });
-
-  return positions;
+function initialRadialPosition(node: RenderNode) {
+  const angle = hashToUnit(node.id) * Math.PI * 2;
+  const baseRadius = node.type === "recipe" ? 320 : node.type === "product" ? 420 : 140;
+  const jitter = (hashToUnit(node.label ?? node.id) - 0.5) * 40;
+  const radius = baseRadius + jitter;
+  return {
+    x: Math.cos(angle) * radius,
+    y: Math.sin(angle) * radius,
+  };
 }
 
 function buildSigmaGraph(nodes: RenderNode[], edges: RenderEdge[]) {
   const graph = new Graph({ multi: true });
-  const positions = computePositions(nodes);
   const edgePairs = new Set<string>();
 
+  const affinityGroups: Record<string, RenderNode[]> = {
+    reagent: [],
+    recipe: [],
+    product: [],
+  };
+
   nodes.forEach((node) => {
-    const pos = positions.get(node.id) ?? { x: 0, y: 0 };
+    const pos = initialRadialPosition(node);
     graph.addNode(node.id, {
       label: node.label,
       x: pos.x,
@@ -90,6 +91,14 @@ function buildSigmaGraph(nodes: RenderNode[], edges: RenderEdge[]) {
       size: node.type === "recipe" ? 10 : 8,
       color: TYPE_COLOR[node.type] ?? "#2d3443",
     });
+
+    if (node.type === "recipe") {
+      affinityGroups.recipe.push(node);
+    } else if (node.type === "product") {
+      affinityGroups.product.push(node);
+    } else {
+      affinityGroups.reagent.push(node);
+    }
   });
 
   edges.forEach((edge) => {
@@ -103,9 +112,51 @@ function buildSigmaGraph(nodes: RenderNode[], edges: RenderEdge[]) {
     graph.addEdgeWithKey(edge.id, edge.source, edge.target, {
       color: "#5c6478",
       size: 1,
+      weight: 1,
     });
     edgePairs.add(pairKey);
   });
+
+  const addAffinityEdges = (groupKey: string, groupNodes: RenderNode[]) => {
+    if (groupNodes.length < 2) {
+      return;
+    }
+    const sorted = [...groupNodes].sort((a, b) => a.label.localeCompare(b.label));
+    const neighborCount = Math.min(3, sorted.length - 1);
+    sorted.forEach((node, index) => {
+      for (let offset = 1; offset <= neighborCount; offset += 1) {
+        const target = sorted[(index + offset) % sorted.length];
+        const pairKey = `${node.id}->${target.id}`;
+        if (edgePairs.has(pairKey) || graph.hasEdge(pairKey)) {
+          continue;
+        }
+        graph.addEdgeWithKey(pairKey, node.id, target.id, {
+          color: "rgba(0, 0, 0, 0)",
+          size: 0.1,
+          weight: 0.15,
+          hidden: true,
+          affinity: groupKey,
+        });
+        edgePairs.add(pairKey);
+      }
+    });
+  };
+
+  Object.entries(affinityGroups).forEach(([groupKey, groupNodes]) => {
+    addAffinityEdges(groupKey, groupNodes);
+  });
+
+  if (graph.order > 0) {
+    forceAtlas2.assign(graph, {
+      iterations: 150,
+      settings: {
+        gravity: 1.2,
+        scalingRatio: 2.5,
+        slowDown: 2,
+        edgeWeightInfluence: 0.8,
+      },
+    });
+  }
 
   return graph;
 }
@@ -357,17 +408,6 @@ export default function App() {
     const filteredNodes = graph.nodes.filter((n) => nodeIdSet.has(n.id));
     setViewGraph({ nodes: filteredNodes, edges: edgesForView });
   }, [graph, selectedProfession, selectedNodeId]);
-
-  useEffect(() => {
-    if (!graph || selectedProfession !== "all") {
-      return;
-    }
-    const firstProfession = graph.nodes.find((n) => typeof n.professionId === "number")
-      ?.professionId;
-    if (typeof firstProfession === "number") {
-      setSelectedProfession(firstProfession);
-    }
-  }, [graph, selectedProfession]);
 
   const sigmaGraph = useMemo(() => {
     if (!viewGraph) {

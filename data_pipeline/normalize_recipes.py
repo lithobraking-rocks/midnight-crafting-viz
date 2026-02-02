@@ -414,7 +414,7 @@ def main() -> None:
     )
     parser.add_argument(
         "--exclude-slot-names",
-        default="embellishment,customize secondary stats,empower,artisan's authenticity,spark,infuse with power,secret ingredient",
+        default="embellishment,customize secondary stats,empower,artisan's authenticity,spark,infuse with power,secret ingredient,socket",
         help="Comma-separated substrings of slot names to exclude.",
     )
     parser.add_argument(
