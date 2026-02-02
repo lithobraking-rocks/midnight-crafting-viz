@@ -123,11 +123,30 @@ def extract_crafted_items(recipe: dict) -> List[Tuple[int, Optional[str], Option
     return items
 
 
+def extract_slot_types(recipe: dict, exclude_names: List[str]) -> List[Tuple[int, str]]:
+    slots: List[Tuple[int, str]] = []
+    for entry in recipe.get("modified_crafting_slots", []) or []:
+        slot_type = entry.get("slot_type", {})
+        sid = slot_type.get("id")
+        name = slot_type.get("name")
+        if isinstance(sid, int) and isinstance(name, str):
+            lower_name = name.lower()
+            if any(excl in lower_name for excl in exclude_names):
+                continue
+            slots.append((sid, name))
+    return slots
+
+
 def load_recipe(path: Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def build_graph(recipes_root: Path, create_product_nodes: bool) -> Tuple[dict, List[int]]:
+def build_graph(
+    recipes_root: Path,
+    create_product_nodes: bool,
+    include_slot_types: bool,
+    exclude_slot_names: List[str],
+) -> Tuple[dict, List[int]]:
     nodes: Dict[str, dict] = {}
     edges: List[dict] = []
     item_ids: List[int] = []
@@ -141,7 +160,8 @@ def build_graph(recipes_root: Path, create_product_nodes: bool) -> Tuple[dict, L
 
         reagents = extract_reagents(recipe)
         crafted_items = extract_crafted_items(recipe)
-        if not reagents and not crafted_items:
+        slot_types = extract_slot_types(recipe, exclude_slot_names) if include_slot_types else []
+        if not reagents and not crafted_items and not slot_types:
             continue
 
         recipe_node_id = f"recipe-{recipe_id}"
@@ -178,6 +198,26 @@ def build_graph(recipes_root: Path, create_product_nodes: bool) -> Tuple[dict, L
                 }
             )
             item_ids.append(item_id)
+
+        for slot_id, slot_name in slot_types:
+            slot_node_id = f"slot-{slot_id}"
+            nodes.setdefault(
+                slot_node_id,
+                {
+                    "id": slot_node_id,
+                    "type": "slot",
+                    "slotId": slot_id,
+                    "label": slot_name,
+                },
+            )
+            edges.append(
+                {
+                    "id": f"e-{slot_node_id}-{recipe_node_id}",
+                    "source": slot_node_id,
+                    "target": recipe_node_id,
+                    "edgeType": "optional",
+                }
+            )
 
         if crafted_items:
             for item_id, item_name, qty in crafted_items:
@@ -318,9 +358,19 @@ def main() -> None:
         help="Fetch and cache item + item media for icons.",
     )
     parser.add_argument(
-        "--no-product-nodes",
+        "--product-nodes",
         action="store_true",
-        help="Disable synthetic product nodes when crafted items are missing.",
+        help="Enable synthetic product nodes when crafted items are missing.",
+    )
+    parser.add_argument(
+        "--no-slot-types",
+        action="store_true",
+        help="Disable modified crafting slot type nodes.",
+    )
+    parser.add_argument(
+        "--exclude-slot-names",
+        default="embellishment,customize secondary stats,empower,artisan's authenticity",
+        help="Comma-separated substrings of slot names to exclude.",
     )
     parser.add_argument("--region", default=None)
     parser.add_argument("--namespace", default=None)
@@ -335,7 +385,15 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    graph, item_ids = build_graph(Path(args.recipes_root), not args.no_product_nodes)
+    exclude_slot_names = [
+        part.strip().lower() for part in args.exclude_slot_names.split(",") if part.strip()
+    ]
+    graph, item_ids = build_graph(
+        Path(args.recipes_root),
+        args.product_nodes,
+        not args.no_slot_types,
+        exclude_slot_names,
+    )
 
     if args.fetch_items:
         cfg = load_config(args)
