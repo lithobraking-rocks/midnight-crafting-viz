@@ -150,8 +150,17 @@ def build_graph(
     nodes: Dict[str, dict] = {}
     edges: List[dict] = []
     item_ids: List[int] = []
+    recipes_seen: List[Tuple[int, str, Optional[int]]] = []
 
     for recipe_path in iter_recipe_files(recipes_root):
+        profession_id: Optional[int] = None
+        for part in recipe_path.parts:
+            if part.startswith("profession_"):
+                try:
+                    profession_id = int(part.split("_", 1)[1])
+                except ValueError:
+                    profession_id = None
+                break
         recipe = load_recipe(recipe_path)
         recipe_id = recipe.get("id")
         recipe_name = recipe.get("name")
@@ -174,8 +183,10 @@ def build_graph(
                 "recipeId": recipe_id,
                 "label": recipe_name,
                 "icon": recipe_icon,
+                "professionId": profession_id,
             },
         )
+        recipes_seen.append((recipe_id, recipe_name, profession_id))
 
         for item_id, item_name, qty in reagents:
             item_node_id = f"item-{item_id}"
@@ -195,6 +206,7 @@ def build_graph(
                     "target": recipe_node_id,
                     "quantity": qty,
                     "edgeType": "reagent",
+                    "professionId": profession_id,
                 }
             )
             item_ids.append(item_id)
@@ -216,6 +228,7 @@ def build_graph(
                     "source": slot_node_id,
                     "target": recipe_node_id,
                     "edgeType": "optional",
+                    "professionId": profession_id,
                 }
             )
 
@@ -238,6 +251,7 @@ def build_graph(
                         "target": item_node_id,
                         "quantity": qty,
                         "edgeType": "crafted",
+                        "professionId": profession_id,
                     }
                 )
                 item_ids.append(item_id)
@@ -251,6 +265,7 @@ def build_graph(
                     "label": recipe_name,
                     "recipeId": recipe_id,
                     "icon": recipe_icon,
+                    "professionId": profession_id,
                 },
             )
             edges.append(
@@ -259,6 +274,7 @@ def build_graph(
                     "source": recipe_node_id,
                     "target": product_node_id,
                     "edgeType": "crafted",
+                    "professionId": profession_id,
                 }
             )
 
@@ -266,6 +282,35 @@ def build_graph(
         "nodes": list(nodes.values()),
         "edges": edges,
     }
+    # Collapse slot nodes into matching item nodes by label.
+    item_by_label: Dict[str, str] = {}
+    for node in graph["nodes"]:
+        if node.get("type") == "item":
+            label = node.get("label")
+            if isinstance(label, str):
+                item_by_label[label.lower()] = node["id"]
+
+    remapped_edges: List[dict] = []
+    referenced_nodes: set[str] = set()
+    for edge in graph["edges"]:
+        source_id = edge.get("source")
+        if isinstance(source_id, str) and source_id.startswith("slot-"):
+            slot_node = next((n for n in graph["nodes"] if n.get("id") == source_id), None)
+            slot_label = slot_node.get("label") if isinstance(slot_node, dict) else None
+            if isinstance(slot_label, str):
+                mapped_item_id = item_by_label.get(slot_label.lower())
+                if mapped_item_id:
+                    edge = {**edge, "source": mapped_item_id}
+        remapped_edges.append(edge)
+        src = edge.get("source")
+        tgt = edge.get("target")
+        if isinstance(src, str):
+            referenced_nodes.add(src)
+        if isinstance(tgt, str):
+            referenced_nodes.add(tgt)
+
+    graph["edges"] = remapped_edges
+    graph["nodes"] = [n for n in graph["nodes"] if n.get("id") in referenced_nodes]
     return graph, sorted(set(item_ids))
 
 
@@ -369,8 +414,13 @@ def main() -> None:
     )
     parser.add_argument(
         "--exclude-slot-names",
-        default="embellishment,customize secondary stats,empower,artisan's authenticity",
+        default="embellishment,customize secondary stats,empower,artisan's authenticity,spark,infuse with power,secret ingredient",
         help="Comma-separated substrings of slot names to exclude.",
+    )
+    parser.add_argument(
+        "--no-name-output-links",
+        action="store_true",
+        help="Disable heuristic recipe->item links based on matching names.",
     )
     parser.add_argument("--region", default=None)
     parser.add_argument("--namespace", default=None)
@@ -394,6 +444,91 @@ def main() -> None:
         not args.no_slot_types,
         exclude_slot_names,
     )
+
+    if not args.no_name_output_links:
+        items_by_label: Dict[str, List[str]] = {}
+        recipe_nodes = [n for n in graph["nodes"] if n.get("type") == "recipe"]
+        item_nodes = [n for n in graph["nodes"] if n.get("type") in {"item", "slot"}]
+
+        for item in item_nodes:
+            label = item.get("label")
+            if isinstance(label, str):
+                items_by_label.setdefault(label.lower(), []).append(item["id"])
+
+        existing_edges = {e["id"] for e in graph["edges"]}
+        for recipe in recipe_nodes:
+            label = recipe.get("label")
+            if not isinstance(label, str):
+                continue
+            for item_id in items_by_label.get(label.lower(), []):
+                edge_id = f"e-{recipe['id']}-{item_id}-name"
+                if edge_id in existing_edges:
+                    continue
+                graph["edges"].append(
+                    {
+                        "id": edge_id,
+                        "source": recipe["id"],
+                        "target": item_id,
+                        "edgeType": "crafted",
+                        "professionId": recipe.get("professionId"),
+                    }
+                )
+                existing_edges.add(edge_id)
+
+    # Merge slot nodes into item/recipe nodes by label (prefer recipe targets).
+    recipe_by_label: Dict[str, str] = {}
+    item_by_label: Dict[str, str] = {}
+    slot_by_id: Dict[str, dict] = {}
+    for node in graph.get("nodes", []):
+        node_id = node.get("id")
+        label = node.get("label")
+        if not isinstance(node_id, str) or not isinstance(label, str):
+            continue
+        lower_label = label.lower()
+        if node.get("type") == "recipe":
+            recipe_by_label.setdefault(lower_label, node_id)
+        elif node.get("type") == "item":
+            item_by_label.setdefault(lower_label, node_id)
+        elif node.get("type") == "slot":
+            slot_by_id[node_id] = node
+
+    slot_target_by_id: Dict[str, str] = {}
+    for slot_id, slot_node in slot_by_id.items():
+        label = slot_node.get("label")
+        if not isinstance(label, str):
+            continue
+        lower_label = label.lower()
+        preferred = recipe_by_label.get(lower_label) or item_by_label.get(lower_label)
+        if preferred:
+            slot_target_by_id[slot_id] = preferred
+
+    if slot_target_by_id:
+        remapped_edges: List[dict] = []
+        referenced_nodes: set[str] = set()
+        seen_edges: set[str] = set()
+        for edge in graph.get("edges", []):
+            source_id = edge.get("source")
+            target_id = edge.get("target")
+            if isinstance(source_id, str) and source_id in slot_target_by_id:
+                source_id = slot_target_by_id[source_id]
+            if isinstance(target_id, str) and target_id in slot_target_by_id:
+                target_id = slot_target_by_id[target_id]
+
+            updated_edge = {**edge, "source": source_id, "target": target_id}
+            edge_id = updated_edge.get("id")
+            if isinstance(edge_id, str) and edge_id in seen_edges:
+                continue
+            if isinstance(edge_id, str):
+                seen_edges.add(edge_id)
+            remapped_edges.append(updated_edge)
+
+            if isinstance(source_id, str):
+                referenced_nodes.add(source_id)
+            if isinstance(target_id, str):
+                referenced_nodes.add(target_id)
+
+        graph["edges"] = remapped_edges
+        graph["nodes"] = [n for n in graph.get("nodes", []) if n.get("id") in referenced_nodes]
 
     if args.fetch_items:
         cfg = load_config(args)
