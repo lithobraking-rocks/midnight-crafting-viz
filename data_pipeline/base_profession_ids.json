@@ -1,0 +1,54 @@
+[
+    {
+    "profession_id": 202,
+    "profession_name": "Engineering"
+    },
+    {
+    "profession_id": 393,
+    "profession_name": "Skinning"
+    },
+    {
+    "profession_id": 164,
+    "profession_name": "Blacksmithing"
+    },
+    {
+    "profession_id": 333,
+    "profession_name": "Enchanting"
+    },
+    {
+    "profession_id": 182,
+    "profession_name": "Herbalism"  
+    },
+    {
+    "profession_id": 186,
+    "profession_name": "Mining"
+    },
+    {
+    "profession_id": 197,
+    "profession_name": "Tailoring"
+    },
+    {
+    "profession_id": 733, 
+    "profession_name": "Inscription"
+    },
+    {
+    "profession_id": 185,
+    "profession_name": "Cooking"
+    },
+    {
+    "profession_id": 356,
+    "profession_name": "Fishing"
+    },
+    {
+    "profession_id": 165,
+    "profession_name": "Leatherworking"
+    },
+    {
+    "profession_id": 171,
+    "profession_name": "Alchemy"
+    },
+    {
+    "profession_id": 755,
+    "profession_name": "Jewelcrafting"
+    }
+]

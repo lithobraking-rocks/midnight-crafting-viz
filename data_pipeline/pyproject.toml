@@ -1,0 +1,13 @@
+[project]
+name = "wow-recipe-scraper"
+version = "0.1.0"
+description = "Scrape WoW recipe and recipe media data for static site builds."
+requires-python = ">=3.11"
+dependencies = [
+  "httpx>=0.27.0",
+  "python-dotenv>=1.0.1",
+  "tqdm>=4.66.0",
+]
+
+[tool.uv]
+package = false
