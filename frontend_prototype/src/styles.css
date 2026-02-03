@@ -10,6 +10,7 @@
 
 body {
   margin: 0;
+  background: #0f1117;
 }
 
 .app {
@@ -20,8 +21,8 @@ body {
 
 .app__header {
   padding: 16px 24px;
-  border-bottom: 1px solid #1f2330;
-  background: #0b0d12;
+  border-bottom: 1px solid #1f2533;
+  background: #0b0e15;
 }
 
 .app__header h1 {
@@ -46,9 +47,9 @@ body {
 
 .app__controls select {
   margin-left: 8px;
-  background: #121621;
+  background: #111623;
   color: #e6e8ee;
-  border: 1px solid #2a2f3a;
+  border: 1px solid #2a3342;
   border-radius: 8px;
   padding: 4px 8px;
 }
@@ -56,11 +57,13 @@ body {
 .app__main {
   height: 100%;
   position: relative;
+  background: #0d111a;
 }
 
 .sigma-container {
   width: 100%;
   height: 100%;
+  background: #0d111a;
 }
 
 .debug-overlay {
@@ -68,8 +71,8 @@ body {
   top: 12px;
   right: 12px;
   z-index: 10;
-  background: rgba(10, 12, 18, 0.85);
-  border: 1px solid #2a2f3a;
+  background: rgba(10, 13, 20, 0.88);
+  border: 1px solid #2a3342;
   border-radius: 8px;
   padding: 8px 10px;
   font-size: 12px;

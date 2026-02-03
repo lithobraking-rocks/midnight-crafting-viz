@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { SigmaContainer, useLoadGraph, useSigma } from "@react-sigma/core";
 import Graph from "graphology";
 import forceAtlas2 from "graphology-layout-forceatlas2";
+import { createNodeBorderProgram } from "@sigma/node-border";
+import { NodeCircleProgram } from "sigma/rendering";
 
 const PROFESSION_NAMES: Record<number, string> = {
   164: "Blacksmithing",
@@ -15,6 +17,20 @@ const PROFESSION_NAMES: Record<number, string> = {
   356: "Fishing",
   393: "Skinning",
   755: "Jewelcrafting",
+};
+
+const PROFESSION_COLORS: Record<number, string> = {
+  164: "#6e86b6",
+  165: "#b0896b",
+  171: "#8b7aa8",
+  182: "#6aa38a",
+  185: "#b89a6a",
+  197: "#b07b8c",
+  202: "#6f9aa2",
+  333: "#9a8fb3",
+  356: "#6b92ad",
+  393: "#8aa06b",
+  755: "#b27a95",
 };
 
 type GraphData = {
@@ -46,11 +62,97 @@ const TYPE_COLUMN: Record<string, number> = {
 };
 
 const TYPE_COLOR: Record<string, string> = {
-  item: "#2d3443",
-  slot: "#2b3140",
+  item: "#2a3140",
+  slot: "#2a3140",
   recipe: "#3b2a57",
-  product: "#2b5a3f",
+  product: "#24543d",
 };
+
+const DEFAULT_NODE_COLOR = "#2a3140";
+const DEFAULT_EDGE_COLOR = "#3a4154";
+const REAGENT_NEUTRAL_COLOR = "#9aa3b2";
+const RECIPE_BORDER_COLOR = "#f2f4f8";
+const HOVER_LABEL_BACKGROUND = "#0b0e15";
+const HOVER_LABEL_TEXT = "#f5f7ff";
+
+type HoverDrawFn = (
+  context: CanvasRenderingContext2D,
+  data: {
+    x: number;
+    y: number;
+    size: number;
+    label?: string | null;
+  },
+  settings: {
+    labelSize: number;
+    labelFont: string;
+    labelWeight: string;
+  },
+) => void;
+
+const drawDarkNodeHover: HoverDrawFn = (context, data, settings) => {
+  if (!data.label) {
+    return;
+  }
+
+  const label = String(data.label);
+  const fontSize = settings.labelSize ?? 14;
+  const fontFamily = settings.labelFont ?? "Inter";
+  const fontWeight = settings.labelWeight ?? "600";
+  const paddingX = 8;
+  const paddingY = 5;
+  const radius = 8;
+  const labelOffset = data.size + 8;
+
+  context.font = `${fontWeight} ${fontSize}px ${fontFamily}`;
+  const textWidth = context.measureText(label).width;
+  const boxWidth = textWidth + paddingX * 2;
+  const boxHeight = fontSize + paddingY * 2;
+  const boxX = data.x + labelOffset;
+  const boxY = data.y - boxHeight / 2;
+
+  context.save();
+  context.fillStyle = HOVER_LABEL_BACKGROUND;
+  context.strokeStyle = "rgba(255, 255, 255, 0.08)";
+  context.lineWidth = 1;
+  context.beginPath();
+  context.moveTo(boxX + radius, boxY);
+  context.lineTo(boxX + boxWidth - radius, boxY);
+  context.quadraticCurveTo(boxX + boxWidth, boxY, boxX + boxWidth, boxY + radius);
+  context.lineTo(boxX + boxWidth, boxY + boxHeight - radius);
+  context.quadraticCurveTo(
+    boxX + boxWidth,
+    boxY + boxHeight,
+    boxX + boxWidth - radius,
+    boxY + boxHeight,
+  );
+  context.lineTo(boxX + radius, boxY + boxHeight);
+  context.quadraticCurveTo(boxX, boxY + boxHeight, boxX, boxY + boxHeight - radius);
+  context.lineTo(boxX, boxY + radius);
+  context.quadraticCurveTo(boxX, boxY, boxX + radius, boxY);
+  context.closePath();
+  context.fill();
+  context.stroke();
+
+  context.fillStyle = HOVER_LABEL_TEXT;
+  context.fillText(label, boxX + paddingX, boxY + boxHeight - paddingY - 1);
+  context.restore();
+};
+
+const recipeBorderProgram = createNodeBorderProgram({
+  borders: [
+    {
+      color: { attribute: "borderColor", defaultValue: RECIPE_BORDER_COLOR },
+      size: { value: 0.12, mode: "relative" },
+    },
+    {
+      color: { attribute: "color" },
+      size: { fill: true },
+    },
+  ],
+  drawHover: drawDarkNodeHover,
+  drawLabel: undefined,
+});
 
 
 function hashToUnit(value: string) {
@@ -72,7 +174,74 @@ function initialRadialPosition(node: RenderNode) {
   };
 }
 
-function buildSigmaGraph(nodes: RenderNode[], edges: RenderEdge[]) {
+function resolveProfessionByNode(nodes: RenderNode[], edges: RenderEdge[]) {
+  const professionByNode = new Map<string, number>();
+  const recipeProfession = new Map<string, number>();
+
+  nodes.forEach((node) => {
+    if (node.type === "recipe" && typeof node.professionId === "number") {
+      recipeProfession.set(node.id, node.professionId);
+      professionByNode.set(node.id, node.professionId);
+    }
+  });
+
+  const counts = new Map<string, Map<number, number>>();
+  const addCount = (nodeId: string, professionId: number) => {
+    if (!counts.has(nodeId)) {
+      counts.set(nodeId, new Map());
+    }
+    const bucket = counts.get(nodeId)!;
+    bucket.set(professionId, (bucket.get(professionId) ?? 0) + 1);
+  };
+
+  edges.forEach((edge) => {
+    const edgeProfession =
+      typeof edge.professionId === "number" ? edge.professionId : undefined;
+    if (edgeProfession !== undefined) {
+      if (!recipeProfession.has(edge.source)) {
+        addCount(edge.source, edgeProfession);
+      }
+      if (!recipeProfession.has(edge.target)) {
+        addCount(edge.target, edgeProfession);
+      }
+    }
+
+    const sourceRecipeProfession = recipeProfession.get(edge.source);
+    if (sourceRecipeProfession !== undefined && !recipeProfession.has(edge.target)) {
+      addCount(edge.target, sourceRecipeProfession);
+    }
+
+    const targetRecipeProfession = recipeProfession.get(edge.target);
+    if (targetRecipeProfession !== undefined && !recipeProfession.has(edge.source)) {
+      addCount(edge.source, targetRecipeProfession);
+    }
+  });
+
+  counts.forEach((professionCounts, nodeId) => {
+    if (professionByNode.has(nodeId)) {
+      return;
+    }
+    let selectedProfession: number | null = null;
+    let maxCount = -1;
+    professionCounts.forEach((count, professionId) => {
+      if (count > maxCount) {
+        maxCount = count;
+        selectedProfession = professionId;
+      }
+    });
+    if (selectedProfession !== null) {
+      professionByNode.set(nodeId, selectedProfession);
+    }
+  });
+
+  return professionByNode;
+}
+
+function buildSigmaGraph(
+  nodes: RenderNode[],
+  edges: RenderEdge[],
+  professionByNode: Map<string, number>,
+) {
   const graph = new Graph({ multi: true });
   const edgePairs = new Set<string>();
 
@@ -84,12 +253,22 @@ function buildSigmaGraph(nodes: RenderNode[], edges: RenderEdge[]) {
 
   nodes.forEach((node) => {
     const pos = initialRadialPosition(node);
+    const professionId = professionByNode.get(node.id);
+    const professionColor =
+      typeof professionId === "number" ? PROFESSION_COLORS[professionId] : undefined;
+    const isReagent = node.type === "item" || node.type === "slot";
     graph.addNode(node.id, {
+      type: node.type === "recipe" ? "border" : "circle",
       label: node.label,
       x: pos.x,
       y: pos.y,
       size: node.type === "recipe" ? 10 : 8,
-      color: TYPE_COLOR[node.type] ?? "#2d3443",
+      color: isReagent
+        ? REAGENT_NEUTRAL_COLOR
+        : node.type === "recipe"
+          ? professionColor ?? TYPE_COLOR.recipe
+          : TYPE_COLOR[node.type] ?? DEFAULT_NODE_COLOR,
+      borderColor: node.type === "recipe" ? RECIPE_BORDER_COLOR : undefined,
     });
 
     if (node.type === "recipe") {
@@ -110,7 +289,7 @@ function buildSigmaGraph(nodes: RenderNode[], edges: RenderEdge[]) {
       return;
     }
     graph.addEdgeWithKey(edge.id, edge.source, edge.target, {
-      color: "#5c6478",
+      color: DEFAULT_EDGE_COLOR,
       size: 1,
       weight: 1,
     });
@@ -156,6 +335,7 @@ function buildSigmaGraph(nodes: RenderNode[], edges: RenderEdge[]) {
         edgeWeightInfluence: 0.8,
       },
     });
+
   }
 
   return graph;
@@ -409,12 +589,19 @@ export default function App() {
     setViewGraph({ nodes: filteredNodes, edges: edgesForView });
   }, [graph, selectedProfession, selectedNodeId]);
 
+  const professionByNode = useMemo(() => {
+    if (!viewGraph) {
+      return new Map<string, number>();
+    }
+    return resolveProfessionByNode(viewGraph.nodes, viewGraph.edges);
+  }, [viewGraph]);
+
   const sigmaGraph = useMemo(() => {
     if (!viewGraph) {
-      return buildSigmaGraph([], []);
+      return buildSigmaGraph([], [], new Map());
     }
-    return buildSigmaGraph(viewGraph.nodes, viewGraph.edges);
-  }, [viewGraph]);
+    return buildSigmaGraph(viewGraph.nodes, viewGraph.edges, professionByNode);
+  }, [professionByNode, viewGraph]);
 
   return (
     <div className="app">
@@ -452,8 +639,17 @@ export default function App() {
           settings={{
             renderEdgeLabels: false,
             labelRenderedSizeThreshold: 14,
-            defaultNodeColor: "#2d3443",
-            defaultEdgeColor: "#5c6478",
+            labelColor: { color: "#e6e8ee" },
+            labelHoverColor: { color: "#ffffff" },
+            labelHoverBackgroundColor: "#0b0e15",
+            labelHoverShadowColor: "#0b0e15",
+            defaultNodeColor: DEFAULT_NODE_COLOR,
+            defaultEdgeColor: DEFAULT_EDGE_COLOR,
+            defaultDrawNodeHover: drawDarkNodeHover,
+            nodeProgramClasses: {
+              circle: NodeCircleProgram,
+              border: recipeBorderProgram,
+            },
             edgeProgramClasses: {},
           }}
           className="sigma-container"
