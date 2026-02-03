@@ -21,7 +21,7 @@ body {
 
 .app__header {
   padding: 12px 20px;
-  padding-bottom: 46px;
+  padding-bottom: 30px;
   border-bottom: 1px solid #1f2533;
   background: #0b0e15;
   position: relative;
@@ -54,10 +54,8 @@ body {
   margin-bottom: 0;
 }
 
-.app__header p {
-  margin: 0;
-  color: #8a90a2;
-  font-size: 14px;
+.app__tip--inline {
+  margin: 6px 0 0;
 }
 
 .app__controls {
@@ -67,6 +65,19 @@ body {
   align-items: center;
   color: #aab2c5;
   font-size: 12px;
+  flex-wrap: wrap;
+}
+
+.controls__column {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.controls__row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
   flex-wrap: wrap;
 }
 
@@ -180,6 +191,13 @@ body {
   text-transform: capitalize;
 }
 
+.search__empty {
+  padding: 10px 12px;
+  font-size: 12px;
+  color: #9aa2b1;
+  text-align: center;
+}
+
 .app__controls select {
   margin-left: 8px;
   background: #111623;
@@ -201,20 +219,6 @@ body {
   background: #0d111a;
 }
 
-.debug-overlay {
-  position: absolute;
-  top: 12px;
-  right: 12px;
-  z-index: 10;
-  background: rgba(10, 13, 20, 0.88);
-  border: 1px solid #2a3342;
-  border-radius: 8px;
-  padding: 8px 10px;
-  font-size: 12px;
-  color: #cfd6e6;
-  pointer-events: none;
-}
-
 .reset-view {
   position: absolute;
   top: 12px;
@@ -234,67 +238,23 @@ body {
   background: #1a2030;
 }
 
-.node {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  padding: 8px 10px;
-  border-radius: 10px;
-  background: #151925;
-  border: 1px solid #2a2f3a;
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
-  min-width: 220px;
-}
 
-.node__icon {
-  width: 40px;
-  height: 40px;
-  border-radius: 8px;
-  object-fit: cover;
-  border: 1px solid #2a2f3a;
-}
-
-.node__label {
-  font-size: 14px;
-  font-weight: 600;
-}
-
-.node__meta {
-  font-size: 12px;
-  color: #9aa2b1;
-}
-
-.node__handle {
-  width: 10px;
-  height: 10px;
-  border: 1px solid #3a4050;
-  background: #1f2533;
-}
-
-.node--recipe {
-  background: #1b1628;
-  border-color: #3b2a57;
-}
-
-.node--product {
-  background: #14211a;
-  border-color: #26563b;
-}
-
-@media (max-width: 960px) {
+@media (max-width: 1280px) {
   .legend--floating {
     position: static;
     order: 0;
     max-width: 100%;
   }
-
-  .app__tip--floating {
-    position: static;
-    order: 1;
-  }
-
   .app__header {
     padding-bottom: 16px;
+  }
+}
+
+@media (max-width: 520px) {
+  .legend {
+    border-radius: 16px;
+    padding: 8px 10px;
+    width: 100%;
   }
 }
 

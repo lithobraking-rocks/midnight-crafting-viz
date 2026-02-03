@@ -63,13 +63,6 @@ type SearchResult = {
   professionId?: number | null;
 };
 
-const TYPE_COLUMN: Record<string, number> = {
-  item: 0,
-  slot: 0,
-  recipe: 1,
-  product: 2,
-};
-
 const TYPE_COLOR: Record<string, string> = {
   item: "#2a3140",
   slot: "#2a3140",
@@ -720,71 +713,79 @@ export default function App() {
               ))}
             </div>
           </div>
-          <div className="app__tip app__tip--floating">
-            Click a recipe or reagent node to focus its crafting chain.
-          </div>
-          <div className="search">
-            <input
-              className="search__input"
-              type="text"
-              placeholder="Search nodes..."
-              value={searchValue}
-              onChange={(event) => {
-                setSearchValue(event.target.value);
-                setIsSearchOpen(true);
-              }}
-              onFocus={(event) => {
-                event.currentTarget.select();
-                setIsSearchOpen(true);
-              }}
-              onBlur={() => {
-                window.setTimeout(() => setIsSearchOpen(false), 120);
-              }}
-            />
-            {searchResults.length > 0 ? (
-              <div className="search__results">
-                {searchResults.map((result) => (
-                  <button
-                    key={result.id}
-                    type="button"
-                    className="search__result"
-                    onMouseDown={(event) => event.preventDefault()}
-                    onClick={() => {
-                      setSelectedNodeId(result.id);
-                      setSearchValue(result.label);
-                      setIsSearchOpen(false);
-                    }}
-                  >
-                    <span className="search__label">{result.label}</span>
-                    <span className="search__meta">
-                      {result.type}
-                      {typeof result.professionId === "number"
-                        ? ` · ${PROFESSION_NAMES[result.professionId] ?? result.professionId}`
-                        : ""}
-                    </span>
-                  </button>
-                ))}
+          <div className="controls__column">
+            <div className="controls__row">
+              <div className="search">
+                <input
+                  className="search__input"
+                  type="text"
+                  placeholder="Search recipes..."
+                  value={searchValue}
+                  onChange={(event) => {
+                    setSearchValue(event.target.value);
+                    setIsSearchOpen(true);
+                  }}
+                  onFocus={(event) => {
+                    event.currentTarget.select();
+                    setIsSearchOpen(true);
+                  }}
+                  onBlur={() => {
+                    window.setTimeout(() => setIsSearchOpen(false), 120);
+                  }}
+                />
+                {isSearchOpen && searchValue.trim().length >= 2 ? (
+                  <div className="search__results">
+                    {searchResults.length > 0 ? (
+                      searchResults.map((result) => (
+                        <button
+                          key={result.id}
+                          type="button"
+                          className="search__result"
+                          onMouseDown={(event) => event.preventDefault()}
+                          onClick={() => {
+                            setSelectedNodeId(result.id);
+                            setSearchValue(result.label);
+                            setIsSearchOpen(false);
+                          }}
+                        >
+                          <span className="search__label">{result.label}</span>
+                          <span className="search__meta">
+                            {result.type}
+                            {typeof result.professionId === "number"
+                              ? ` · ${PROFESSION_NAMES[result.professionId] ?? result.professionId}`
+                              : ""}
+                          </span>
+                        </button>
+                      ))
+                    ) : (
+                      <div className="search__empty">No results found.</div>
+                    )}
+                  </div>
+                ) : null}
               </div>
-            ) : null}
+              <label>
+                Profession
+                <select
+                  value={selectedProfession}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    setSelectedNodeId(null);
+                    setSelectedProfession(value === "all" ? "all" : Number(value));
+                  }}
+                >
+                  <option value="all">All</option>
+                  {professions.map((pid) => (
+                    <option key={pid} value={pid}>
+                      {PROFESSION_NAMES[pid] ?? pid}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            <div className="app__tip app__tip--inline">
+              Click a recipe or reagent node to focus its crafting chain.
+            </div>
           </div>
-          <label>
-            Profession
-            <select
-              value={selectedProfession}
-              onChange={(event) => {
-                const value = event.target.value;
-                setSelectedNodeId(null);
-                setSelectedProfession(value === "all" ? "all" : Number(value));
-              }}
-            >
-              <option value="all">All</option>
-              {professions.map((pid) => (
-                <option key={pid} value={pid}>
-                  {PROFESSION_NAMES[pid] ?? pid}
-                </option>
-              ))}
-            </select>
-          </label>
         </div>
       </header>
       <main className="app__main">
