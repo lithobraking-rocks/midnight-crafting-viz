@@ -72,6 +72,7 @@ const DEFAULT_NODE_COLOR = "#2a3140";
 const DEFAULT_EDGE_COLOR = "#3a4154";
 const REAGENT_NEUTRAL_COLOR = "#9aa3b2";
 const RECIPE_BORDER_COLOR = "#f2f4f8";
+const SELECTED_NODE_COLOR = "#ffd166";
 const HOVER_LABEL_BACKGROUND = "#0b0e15";
 const HOVER_LABEL_TEXT = "#f5f7ff";
 
@@ -241,7 +242,17 @@ function buildSigmaGraph(
   nodes: RenderNode[],
   edges: RenderEdge[],
   professionByNode: Map<string, number>,
+  options?: {
+    forceLabels?: boolean;
+    sizeMultiplier?: number;
+    positionScale?: number;
+    selectedNodeId?: string | null;
+  },
 ) {
+  const forceLabels = options?.forceLabels ?? false;
+  const sizeMultiplier = options?.sizeMultiplier ?? 1;
+  const positionScale = options?.positionScale ?? 1;
+  const selectedNodeId = options?.selectedNodeId ?? null;
   const graph = new Graph({ multi: true });
   const edgePairs = new Set<string>();
 
@@ -257,18 +268,26 @@ function buildSigmaGraph(
     const professionColor =
       typeof professionId === "number" ? PROFESSION_COLORS[professionId] : undefined;
     const isReagent = node.type === "item" || node.type === "slot";
+    const isSelected = selectedNodeId === node.id;
+    const baseColor = isReagent
+      ? REAGENT_NEUTRAL_COLOR
+      : node.type === "recipe"
+        ? professionColor ?? TYPE_COLOR.recipe
+        : TYPE_COLOR[node.type] ?? DEFAULT_NODE_COLOR;
     graph.addNode(node.id, {
       type: node.type === "recipe" ? "border" : "circle",
       label: node.label,
       x: pos.x,
       y: pos.y,
-      size: node.type === "recipe" ? 10 : 8,
-      color: isReagent
-        ? REAGENT_NEUTRAL_COLOR
-        : node.type === "recipe"
-          ? professionColor ?? TYPE_COLOR.recipe
-          : TYPE_COLOR[node.type] ?? DEFAULT_NODE_COLOR,
-      borderColor: node.type === "recipe" ? RECIPE_BORDER_COLOR : undefined,
+      size: (node.type === "recipe" ? 10 : 8) * sizeMultiplier * (isSelected ? 1.25 : 1),
+      color: isSelected ? SELECTED_NODE_COLOR : baseColor,
+      borderColor:
+        node.type === "recipe"
+          ? isSelected
+            ? SELECTED_NODE_COLOR
+            : RECIPE_BORDER_COLOR
+          : undefined,
+      forceLabel: forceLabels || isSelected,
     });
 
     if (node.type === "recipe") {
@@ -335,7 +354,13 @@ function buildSigmaGraph(
         edgeWeightInfluence: 0.8,
       },
     });
+  }
 
+  if (positionScale !== 1) {
+    graph.forEachNode((nodeId, attrs) => {
+      graph.setNodeAttribute(nodeId, "x", attrs.x * positionScale);
+      graph.setNodeAttribute(nodeId, "y", attrs.y * positionScale);
+    });
   }
 
   return graph;
@@ -597,11 +622,17 @@ export default function App() {
   }, [viewGraph]);
 
   const sigmaGraph = useMemo(() => {
+    const focusMode = Boolean(selectedNodeId);
     if (!viewGraph) {
       return buildSigmaGraph([], [], new Map());
     }
-    return buildSigmaGraph(viewGraph.nodes, viewGraph.edges, professionByNode);
-  }, [professionByNode, viewGraph]);
+    return buildSigmaGraph(viewGraph.nodes, viewGraph.edges, professionByNode, {
+      forceLabels: focusMode,
+      sizeMultiplier: focusMode ? 1.2 : 1,
+      positionScale: focusMode ? 0.75 : 1,
+      selectedNodeId,
+    });
+  }, [professionByNode, selectedNodeId, viewGraph]);
 
   return (
     <div className="app">
@@ -635,6 +666,15 @@ export default function App() {
           <div>Nodes: {viewGraph?.nodes.length ?? 0}</div>
           <div>Edges: {viewGraph?.edges.length ?? 0}</div>
         </div>
+        {selectedNodeId ? (
+          <button
+            className="reset-view"
+            type="button"
+            onClick={() => setSelectedNodeId(null)}
+          >
+            Reset view
+          </button>
+        ) : null}
         <SigmaContainer
           settings={{
             renderEdgeLabels: false,

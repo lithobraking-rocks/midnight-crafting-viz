@@ -80,6 +80,25 @@ body {
   pointer-events: none;
 }
 
+.reset-view {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 11;
+  background: #121723;
+  color: #e6e8ee;
+  border: 1px solid #2a3342;
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.35);
+}
+
+.reset-view:hover {
+  background: #1a2030;
+}
+
 .node {
   display: flex;
   gap: 10px;
