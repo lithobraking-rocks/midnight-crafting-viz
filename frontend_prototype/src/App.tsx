@@ -3,7 +3,8 @@ import { SigmaContainer, useLoadGraph, useSigma } from "@react-sigma/core";
 import Graph from "graphology";
 import forceAtlas2 from "graphology-layout-forceatlas2";
 import { createNodeBorderProgram } from "@sigma/node-border";
-import { NodeCircleProgram } from "sigma/rendering";
+import { createEdgeArrowProgram, NodeCircleProgram } from "sigma/rendering";
+import Fuse from "fuse.js";
 
 const PROFESSION_NAMES: Record<number, string> = {
   164: "Blacksmithing",
@@ -53,6 +54,12 @@ type GraphData = {
 };
 type RenderNode = GraphData["nodes"][number];
 type RenderEdge = GraphData["edges"][number];
+type SearchResult = {
+  id: string;
+  label: string;
+  type: string;
+  professionId?: number | null;
+};
 
 const TYPE_COLUMN: Record<string, number> = {
   item: 0,
@@ -73,6 +80,7 @@ const DEFAULT_EDGE_COLOR = "#3a4154";
 const REAGENT_NEUTRAL_COLOR = "#9aa3b2";
 const RECIPE_BORDER_COLOR = "#f2f4f8";
 const SELECTED_NODE_COLOR = "#ffd166";
+const EDGE_SIZE = 1.6;
 const HOVER_LABEL_BACKGROUND = "#0b0e15";
 const HOVER_LABEL_TEXT = "#f5f7ff";
 
@@ -153,6 +161,11 @@ const recipeBorderProgram = createNodeBorderProgram({
   ],
   drawHover: drawDarkNodeHover,
   drawLabel: undefined,
+});
+
+const edgeArrowProgram = createEdgeArrowProgram({
+  lengthToThicknessRatio: 6,
+  widenessToThicknessRatio: 4,
 });
 
 
@@ -309,8 +322,9 @@ function buildSigmaGraph(
     }
     graph.addEdgeWithKey(edge.id, edge.source, edge.target, {
       color: DEFAULT_EDGE_COLOR,
-      size: 1,
+      size: EDGE_SIZE,
       weight: 1,
+      type: "arrow",
     });
     edgePairs.add(pairKey);
   });
@@ -334,6 +348,7 @@ function buildSigmaGraph(
           weight: 0.15,
           hidden: true,
           affinity: groupKey,
+          type: "line",
         });
         edgePairs.add(pairKey);
       }
@@ -522,13 +537,13 @@ function GraphEvents({
   return null;
 }
 
-function GraphLoader({ graph }: { graph: Graph }) {
+function GraphLoader({ graph, cameraRatio }: { graph: Graph; cameraRatio: number }) {
   const loadGraph = useLoadGraph();
   const sigma = useSigma();
   useEffect(() => {
     loadGraph(graph);
-    sigma.getCamera().animatedReset();
-  }, [graph, loadGraph, sigma]);
+    sigma.getCamera().setState({ x: 0.5, y: 0.5, ratio: cameraRatio, angle: 0 });
+  }, [cameraRatio, graph, loadGraph, sigma]);
   return null;
 }
 
@@ -537,6 +552,8 @@ export default function App() {
   const [viewGraph, setViewGraph] = useState<GraphData | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [selectedProfession, setSelectedProfession] = useState<number | "all">("all");
+  const [searchValue, setSearchValue] = useState("");
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
 
   useEffect(() => {
     fetch("/midnight_graph.json")
@@ -556,6 +573,32 @@ export default function App() {
     });
     return Array.from(professionIds).sort((a, b) => a - b);
   }, [graph]);
+
+  const searchIndex = useMemo(() => {
+    if (!graph) {
+      return null;
+    }
+    const items: SearchResult[] = graph.nodes.map((node) => ({
+      id: node.id,
+      label: node.label,
+      type: node.type,
+      professionId: node.professionId ?? null,
+    }));
+    return new Fuse(items, {
+      keys: ["label", "id"],
+      threshold: 0.35,
+      ignoreLocation: true,
+    });
+  }, [graph]);
+
+  const searchResults = useMemo(() => {
+    if (!searchIndex || searchValue.trim().length < 2 || !isSearchOpen) {
+      return [] as SearchResult[];
+    }
+    return searchIndex
+      .search(searchValue.trim(), { limit: 8 })
+      .map((result) => result.item);
+  }, [isSearchOpen, searchIndex, searchValue]);
 
   useEffect(() => {
     if (!graph) {
@@ -582,22 +625,28 @@ export default function App() {
       return sourceProf === selectedProfession || targetProf === selectedProfession;
     });
 
-    let edgesForView = professionFilteredEdges;
+    const professionNodeIdSet = new Set(
+      professionFilteredEdges.flatMap((edge) => [edge.source, edge.target]),
+    );
+    const selectedNodeInProfessionView =
+      !selectedNodeId || professionNodeIdSet.has(selectedNodeId);
+
+    const traversalEdges = selectedNodeInProfessionView
+      ? professionFilteredEdges
+      : graph.edges;
+
+    let edgesForView = traversalEdges;
     let filteredNodeIdSet: Set<string> | null = null;
 
     if (selectedNodeId) {
       const selectedNode = graph.nodes.find((n) => n.id === selectedNodeId);
       if (selectedNode?.type === "recipe") {
-        const { nodeIds, edgeIds } = collectRecipeChain(
-          professionFilteredEdges,
-          selectedNodeId,
-          5,
-        );
+        const { nodeIds, edgeIds } = collectRecipeChain(traversalEdges, selectedNodeId, 5);
         filteredNodeIdSet = nodeIds;
-        edgesForView = professionFilteredEdges.filter((e) => edgeIds.has(e.id));
+        edgesForView = traversalEdges.filter((e) => edgeIds.has(e.id));
       } else {
-        filteredNodeIdSet = collectNeighborhood(professionFilteredEdges, selectedNodeId, 1);
-        edgesForView = professionFilteredEdges.filter(
+        filteredNodeIdSet = collectNeighborhood(traversalEdges, selectedNodeId, 1);
+        edgesForView = traversalEdges.filter(
           (e) => filteredNodeIdSet?.has(e.source) && filteredNodeIdSet?.has(e.target),
         );
       }
@@ -613,6 +662,15 @@ export default function App() {
     const filteredNodes = graph.nodes.filter((n) => nodeIdSet.has(n.id));
     setViewGraph({ nodes: filteredNodes, edges: edgesForView });
   }, [graph, selectedProfession, selectedNodeId]);
+
+  useEffect(() => {
+    if (selectedNodeId && graph) {
+      const node = graph.nodes.find((n) => n.id === selectedNodeId);
+      if (node) {
+        setSearchValue(node.label);
+      }
+    }
+  }, [graph, selectedNodeId]);
 
   const professionByNode = useMemo(() => {
     if (!viewGraph) {
@@ -638,8 +696,62 @@ export default function App() {
     <div className="app">
       <header className="app__header">
         <h1>Midnight Profession Graph</h1>
-        <p>Reagents → Recipe → Product</p>
         <div className="app__controls">
+          <div className="legend legend--floating">
+            <span className="legend__label">Professions</span>
+            <div className="legend__items">
+              {Object.entries(PROFESSION_COLORS).map(([professionId, color]) => (
+                <span key={professionId} className="legend__item">
+                  <span className="legend__swatch" style={{ background: color }} />
+                  {PROFESSION_NAMES[Number(professionId)] ?? professionId}
+                </span>
+              ))}
+            </div>
+          </div>
+          <div className="search">
+            <input
+              className="search__input"
+              type="text"
+              placeholder="Search nodes..."
+              value={searchValue}
+              onChange={(event) => {
+                setSearchValue(event.target.value);
+                setIsSearchOpen(true);
+              }}
+              onFocus={(event) => {
+                event.currentTarget.select();
+                setIsSearchOpen(true);
+              }}
+              onBlur={() => {
+                window.setTimeout(() => setIsSearchOpen(false), 120);
+              }}
+            />
+            {searchResults.length > 0 ? (
+              <div className="search__results">
+                {searchResults.map((result) => (
+                  <button
+                    key={result.id}
+                    type="button"
+                    className="search__result"
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={() => {
+                      setSelectedNodeId(result.id);
+                      setSearchValue(result.label);
+                      setIsSearchOpen(false);
+                    }}
+                  >
+                    <span className="search__label">{result.label}</span>
+                    <span className="search__meta">
+                      {result.type}
+                      {typeof result.professionId === "number"
+                        ? ` · ${PROFESSION_NAMES[result.professionId] ?? result.professionId}`
+                        : ""}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </div>
           <label>
             Profession
             <select
@@ -690,11 +802,16 @@ export default function App() {
               circle: NodeCircleProgram,
               border: recipeBorderProgram,
             },
-            edgeProgramClasses: {},
+            edgeProgramClasses: {
+              arrow: edgeArrowProgram,
+            },
           }}
           className="sigma-container"
         >
-          <GraphLoader graph={sigmaGraph} />
+          <GraphLoader
+            graph={sigmaGraph}
+            cameraRatio={selectedNodeId ? 1.35 : 1.1}
+          />
           <GraphEvents
             onNodeClick={(nodeId) =>
               setSelectedNodeId((prev) => (prev === nodeId ? null : nodeId))
