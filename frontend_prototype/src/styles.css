@@ -20,14 +20,38 @@ body {
 }
 
 .app__header {
-  padding: 16px 24px;
+  padding: 12px 20px;
+  padding-bottom: 46px;
   border-bottom: 1px solid #1f2533;
   background: #0b0e15;
+  position: relative;
 }
 
 .app__header h1 {
   margin: 0 0 4px;
   font-size: 20px;
+}
+
+.app__tip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(20, 28, 43, 0.9);
+  border: 1px solid #263044;
+  color: #b7c0d6;
+  font-size: 12px;
+  width: fit-content;
+}
+
+.app__tip--floating {
+  position: absolute;
+  top: 68px;
+  right: 16px;
+  z-index: 11;
+  margin-bottom: 0;
 }
 
 .app__header p {
@@ -43,6 +67,7 @@ body {
   align-items: center;
   color: #aab2c5;
   font-size: 12px;
+  flex-wrap: wrap;
 }
 
 .legend {
@@ -254,5 +279,22 @@ body {
 .node--product {
   background: #14211a;
   border-color: #26563b;
+}
+
+@media (max-width: 960px) {
+  .legend--floating {
+    position: static;
+    order: 0;
+    max-width: 100%;
+  }
+
+  .app__tip--floating {
+    position: static;
+    order: 1;
+  }
+
+  .app__header {
+    padding-bottom: 16px;
+  }
 }
 

@@ -42,6 +42,8 @@ type GraphData = {
     icon?: string;
     quality?: string;
     professionId?: number | null;
+    x?: number;
+    y?: number;
   }>;
   edges: Array<{
     id: string;
@@ -188,6 +190,13 @@ function initialRadialPosition(node: RenderNode) {
   };
 }
 
+function resolveNodePosition(node: RenderNode) {
+  if (typeof node.x === "number" && typeof node.y === "number") {
+    return { x: node.x, y: node.y };
+  }
+  return initialRadialPosition(node);
+}
+
 function resolveProfessionByNode(nodes: RenderNode[], edges: RenderEdge[]) {
   const professionByNode = new Map<string, number>();
   const recipeProfession = new Map<string, number>();
@@ -268,6 +277,9 @@ function buildSigmaGraph(
   const selectedNodeId = options?.selectedNodeId ?? null;
   const graph = new Graph({ multi: true });
   const edgePairs = new Set<string>();
+  const hasPrecomputedPositions =
+    nodes.length > 0 &&
+    nodes.every((node) => typeof node.x === "number" && typeof node.y === "number");
 
   const affinityGroups: Record<string, RenderNode[]> = {
     reagent: [],
@@ -276,7 +288,7 @@ function buildSigmaGraph(
   };
 
   nodes.forEach((node) => {
-    const pos = initialRadialPosition(node);
+    const pos = resolveNodePosition(node);
     const professionId = professionByNode.get(node.id);
     const professionColor =
       typeof professionId === "number" ? PROFESSION_COLORS[professionId] : undefined;
@@ -359,7 +371,7 @@ function buildSigmaGraph(
     addAffinityEdges(groupKey, groupNodes);
   });
 
-  if (graph.order > 0) {
+  if (graph.order > 0 && !hasPrecomputedPositions) {
     forceAtlas2.assign(graph, {
       iterations: 150,
       settings: {
@@ -708,6 +720,9 @@ export default function App() {
               ))}
             </div>
           </div>
+          <div className="app__tip app__tip--floating">
+            Click a recipe or reagent node to focus its crafting chain.
+          </div>
           <div className="search">
             <input
               className="search__input"
@@ -773,11 +788,6 @@ export default function App() {
         </div>
       </header>
       <main className="app__main">
-        <div className="debug-overlay">
-          <div>Selected: {selectedNodeId ?? "none"}</div>
-          <div>Nodes: {viewGraph?.nodes.length ?? 0}</div>
-          <div>Edges: {viewGraph?.edges.length ?? 0}</div>
-        </div>
         {selectedNodeId ? (
           <button
             className="reset-view"
