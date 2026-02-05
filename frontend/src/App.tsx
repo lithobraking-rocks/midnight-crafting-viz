@@ -23,15 +23,15 @@ const PROFESSION_NAMES: Record<number, string> = {
 const PROFESSION_COLORS: Record<number, string> = {
   164: "#6e86b6",
   165: "#b0896b",
-  171: "#8b7aa8",
+  171: "#4a7fa8",
   182: "#6aa38a",
   185: "#b89a6a",
-  197: "#b07b8c",
+  197: "#815968",
   202: "#6f9aa2",
-  333: "#9a8fb3",
+  333: "#6b4c7e",
   356: "#6b92ad",
   393: "#8aa06b",
-  755: "#b27a95",
+  755: "#528b82",
 };
 
 type GraphData = {
