@@ -561,6 +561,30 @@ export default function App() {
   const [isSearchOpen, setIsSearchOpen] = useState(false);
 
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const professionParam = params.get("profession");
+    const nodeParam = params.get("node");
+    const queryParam = params.get("q");
+
+    if (professionParam === "all") {
+      setSelectedProfession("all");
+    } else if (professionParam) {
+      const parsed = Number(professionParam);
+      if (!Number.isNaN(parsed)) {
+        setSelectedProfession(parsed);
+      }
+    }
+
+    if (nodeParam) {
+      setSelectedNodeId(nodeParam);
+    }
+
+    if (queryParam) {
+      setSearchValue(queryParam);
+    }
+  }, []);
+
+  useEffect(() => {
     fetch("/midnight_graph.json")
       .then((res) => res.json())
       .then((data: GraphData) => setGraph(data));
@@ -677,6 +701,32 @@ export default function App() {
     }
   }, [graph, selectedNodeId]);
 
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+
+    if (selectedProfession === "all") {
+      params.set("profession", "all");
+    } else {
+      params.set("profession", String(selectedProfession));
+    }
+
+    if (selectedNodeId) {
+      params.set("node", selectedNodeId);
+    } else {
+      params.delete("node");
+    }
+
+    if (searchValue.trim().length > 0) {
+      params.set("q", searchValue.trim());
+    } else {
+      params.delete("q");
+    }
+
+    const query = params.toString();
+    const nextUrl = `${window.location.pathname}${query ? `?${query}` : ""}`;
+    window.history.replaceState(null, "", nextUrl);
+  }, [searchValue, selectedNodeId, selectedProfession]);
+
   const professionByNode = useMemo(() => {
     if (!viewGraph) {
       return new Map<string, number>();
@@ -719,7 +769,10 @@ export default function App() {
                 <input
                   className="search__input"
                   type="text"
-                  placeholder="Search recipes..."
+                  placeholder="Search recipes… e.g., Shadowed Alloy"
+                  aria-label="Search recipes"
+                  name="search"
+                  autoComplete="off"
                   value={searchValue}
                   onChange={(event) => {
                     setSearchValue(event.target.value);
@@ -795,7 +848,7 @@ export default function App() {
             type="button"
             onClick={() => setSelectedNodeId(null)}
           >
-            Reset view
+            Reset View
           </button>
         ) : null}
         <SigmaContainer
