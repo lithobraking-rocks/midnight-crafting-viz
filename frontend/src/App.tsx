@@ -552,6 +552,35 @@ function GraphLoader({ graph, cameraRatio }: { graph: Graph; cameraRatio: number
   return null;
 }
 
+function GraphTextureSync() {
+  const sigma = useSigma();
+
+  useEffect(() => {
+    const camera = sigma.getCamera();
+    const root = document.documentElement;
+
+    const updateTexture = () => {
+      const { x, y, ratio } = camera.getState();
+      const scale = Math.max(0.6, Math.min(2.4, 1 / ratio));
+      const shiftX = `${-x * 120}px`;
+      const shiftY = `${-y * 120}px`;
+
+      root.style.setProperty("--paper-scale", String(scale));
+      root.style.setProperty("--paper-shift-x", shiftX);
+      root.style.setProperty("--paper-shift-y", shiftY);
+    };
+
+    updateTexture();
+    camera.on("updated", updateTexture);
+
+    return () => {
+      camera.off("updated", updateTexture);
+    };
+  }, [sigma]);
+
+  return null;
+}
+
 export default function App() {
   const [graph, setGraph] = useState<GraphData | null>(null);
   const [viewGraph, setViewGraph] = useState<GraphData | null>(null);
@@ -769,7 +798,7 @@ export default function App() {
                 <input
                   className="search__input"
                   type="text"
-                  placeholder="Search recipes… e.g., Shadowed Alloy"
+                  placeholder="Search… e.g., Spellthread"
                   aria-label="Search recipes"
                   name="search"
                   autoComplete="off"
@@ -876,6 +905,7 @@ export default function App() {
             graph={sigmaGraph}
             cameraRatio={selectedNodeId ? 1.35 : 1.1}
           />
+          <GraphTextureSync />
           <GraphEvents
             onNodeClick={(nodeId) =>
               setSelectedNodeId((prev) => (prev === nodeId ? null : nodeId))
