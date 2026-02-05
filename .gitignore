@@ -8,6 +8,8 @@ node_modules/
 yarn-debug.log*
 yarn-error.log*
 public
+!frontend/public/
+!frontend/public/**
 
 # Astro
 .astro/
