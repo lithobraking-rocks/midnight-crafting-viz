@@ -27,6 +27,7 @@ PROFESSION_ID_NORMALIZED_NAME = {
     333: "enchanting",
     356: "fishing",
     393: "skinning",
+    773: "inscription",
     755: "jewelcrafting",
 }
 
