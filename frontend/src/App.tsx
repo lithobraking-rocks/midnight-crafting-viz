@@ -18,6 +18,7 @@ const PROFESSION_NAMES: Record<number, string> = {
   356: "Fishing",
   393: "Skinning",
   755: "Jewelcrafting",
+  773: "Inscription",
 };
 
 const PROFESSION_COLORS: Record<number, string> = {
@@ -32,6 +33,7 @@ const PROFESSION_COLORS: Record<number, string> = {
   356: "#6b92ad",
   393: "#8aa06b",
   755: "#528b82",
+  773: "#c95d2f",
 };
 
 type GraphData = {
